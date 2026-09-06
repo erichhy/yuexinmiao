@@ -31,7 +31,12 @@ function savePos(){
   try {
     if(petWin && !petWin.isDestroyed()) lastPetPos = petWin.getPosition();
     if(panelWin && !panelWin.isDestroyed()) lastPanelPos = panelWin.getPosition();
-    if(lastPetPos && lastPanelPos) fs.writeFileSync(POS_FILE, JSON.stringify({ pet:lastPetPos, panel:lastPanelPos }));
+    // 只有坐标有效才落盘：窗口未就绪时 getPosition() 会返回 [0,0]，写进去会把猫带到左上角
+    const ok = (p) => Array.isArray(p) && (p[0] !== 0 || p[1] !== 0);
+    const data = {};
+    if(ok(lastPetPos))   data.pet   = lastPetPos;
+    if(ok(lastPanelPos)) data.panel = lastPanelPos;
+    if(data.pet || data.panel) fs.writeFileSync(POS_FILE, JSON.stringify(data));
   } catch(e){}
 }
 let posSaveT=null;
@@ -116,9 +121,9 @@ function createWindows(){
     return p[0]>=wa.x && p[0]<=wa.x+wa.width && p[1]>=wa.y && p[1]<=wa.y+wa.height; };
 
   /* ---------- 猫窗口（仅猫，可拖拽） ---------- */
-  const validPos = !atLoginStart && lastPetPos && inPrimary(lastPetPos);   // 开机自启时固定落主屏右下角，不沿用上次位置
-  const px = validPos ? lastPetPos[0] : wa.x + wa.width  - PET_W - MARGIN;
-  const py = validPos ? lastPetPos[1] : wa.y + wa.height - PET_H - MARGIN;
+  // 猫固定落在主屏右下角：不沿用存档位置（存档曾被写入 [0,0] 这类异常值，会把猫带到左上角）
+  const px = wa.x + wa.width  - PET_W - MARGIN;
+  const py = wa.y + wa.height - PET_H - MARGIN;
   petWin = new BrowserWindow({
     width: PET_W, height: PET_H,
     x: px, y: py,
