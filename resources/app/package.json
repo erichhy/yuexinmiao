@@ -1,0 +1,14 @@
+{
+  "name": "ip-desktop-pet",
+  "version": "1.0.0",
+  "description": "月薪喵：会花钱、会破产、会死给你看的打工猫桌面宠物（透明置顶）",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-packager . \"IP桌面宠物\" --platform=win32 --arch=x64 --overwrite --icon=assets/icon.ico"
+  },
+  "devDependencies": {
+    "electron": "^31.7.0",
+    "electron-packager": "^17.1.2"
+  }
+}

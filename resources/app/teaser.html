@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<style>
+  html,body{margin:0; height:100%; background:transparent; overflow:hidden;}
+  #dot{position:fixed; width:18px; height:18px; border-radius:50%;
+    background:radial-gradient(circle,#ff6b6b,#ff2d2d); box-shadow:0 0 12px #ff4d4d;
+    transform:translate(-50%,-50%); pointer-events:none; display:none; z-index:1;}
+  #hint{position:fixed; left:50%; bottom:26px; transform:translateX(-50%);
+    font:14px/1.4 system-ui,"Microsoft YaHei",sans-serif; color:#fff; background:rgba(0,0,0,.45);
+    padding:8px 16px; border-radius:999px; pointer-events:none; display:none; z-index:2; white-space:nowrap;
+    backdrop-filter:blur(2px);}
+</style>
+</head>
+<body>
+  <div id="dot"></div>
+  <div id="hint">按 Esc 退出逗猫棒</div>
+  <script src="preload-teaser.js"></script>
+  <script>
+    const dot = document.getElementById('dot');
+    const hint = document.getElementById('hint');
+    document.addEventListener('mousemove', e=>{
+      dot.style.display = 'block';
+      dot.style.left = e.clientX + 'px';
+      dot.style.top  = e.clientY + 'px';
+      if(window.__teaser) window.__teaser.move(e.clientX, e.clientY);
+    });
+    document.addEventListener('mouseleave', ()=>{ dot.style.display = 'none'; });
+    if(window.__teaser){
+      window.__teaser.onStart(()=>{ dot.style.display = 'none'; hint.style.display = 'block'; });
+      window.__teaser.onStop(()=>{ dot.style.display = 'none'; hint.style.display = 'none'; });
+    }
+  </script>
+</body>
+</html>

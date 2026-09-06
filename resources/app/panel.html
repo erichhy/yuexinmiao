@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>月薪喵 · 操作面板</title>
+<style>
+  :root{
+    --ink:#2D2A26; --sub:#6E6862; --accent:#A07856;
+    --honey:#D4A574; --coffee:#A07856; --sage:#7B9F76;
+    --card:#FFFFFF; --card-border:#E8DDC8;
+    --track:#EDE4D4; --stat-bg:#FAF8F4;
+  }
+  *{box-sizing:border-box; -webkit-user-select:none; user-select:none;}
+  html,body{height:100%; margin:0; background:transparent;
+    font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;}
+  #card{
+    position:fixed; inset:0; margin:10px; padding:0; overflow:hidden;
+    background:var(--card); border:1px solid var(--card-border);
+    border-radius:20px;
+    box-shadow:0 2px 12px rgba(26,25,24,.08);
+    display:flex; flex-direction:column;
+  }
+  #handle{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 16px; cursor:grab; touch-action:none;
+    border-bottom:1px solid #F0E8D8;
+  }
+  #handle:active{cursor:grabbing;}
+  #handle .titleWrap{display:flex; align-items:center; gap:12px;}
+  .avatar{
+    width:48px; height:48px; border-radius:24px; background:var(--honey);
+    display:flex; align-items:center; justify-content:center;
+    color:#fff; font-weight:700; font-size:22px; flex:none;
+  }
+  #handle .titles{display:flex; flex-direction:column;}
+  #handle .title{font-family:"Noto Serif SC","Songti SC",serif; font-weight:600; font-size:20px; color:var(--ink);}
+  #handle .subtitle{font-size:11px; color:var(--sub); margin-top:2px;}
+  #handle .min{
+    border:none; background:rgba(0,0,0,.04); color:var(--sub); cursor:pointer;
+    width:30px; height:30px; border-radius:10px; font-size:16px; line-height:1;
+  }
+  #handle .min:hover{background:rgba(0,0,0,.08);}
+
+  #body{ padding:14px 16px 16px; overflow-y:auto; }
+  .secTitle{font-size:12px; color:var(--sub); margin:12px 2px 8px; font-weight:600;}
+  .secTitle:first-child{margin-top:2px;}
+  .grid{ display:flex; flex-wrap:wrap; gap:8px; }
+  .btn{
+    border:none; background:#fff; color:var(--ink); cursor:pointer;
+    padding:9px 12px; border-radius:12px; font-size:14px; font-weight:600;
+    box-shadow:0 2px 6px rgba(0,0,0,.05); transition:transform .12s, background .15s;
+    border:1px solid var(--card-border);
+  }
+  .btn:hover{transform:translateY(-1px);}
+  .btn.active{background:var(--accent); color:#fff; border-color:transparent;}
+  .btn.ghost{background:rgba(0,0,0,.03); box-shadow:none;}
+  .btn.sm{flex:1; min-width:0;}
+  .btn.primary{
+    width:100%; margin-top:10px; padding:12px; display:block;
+    background:var(--coffee); color:#fff; border-color:transparent;
+    font-size:15px; font-weight:700; box-shadow:0 3px 10px rgba(160,120,86,.25);
+  }
+  .btn.primary:hover{background:#8c6849;}
+  .footnote{ margin-top:8px; font-size:12px; color:var(--sub); text-align:center; }
+
+  /* 数值行不换行（钱包数字不被挤掉） */
+  #stats .row{ white-space:nowrap; }
+  #stats .row .v{ white-space:nowrap; }
+
+  /* 成就贴图区：与猫身左侧贴图同源（assets/badges/），按好感度里程碑点亮 */
+  .achBox{ display:flex; gap:8px; }
+  .ach{ flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border-radius:12px; background:#fff; border:1px solid var(--card-border); }
+  .ach img{ width:32px; height:32px; object-fit:contain; display:block; }
+  .ach.locked img{ filter:grayscale(1); opacity:.4; }
+  .ach .nm{ font-size:11px; color:var(--ink); }
+  .ach .th{ font-size:10px; color:var(--sub); text-align:center; line-height:1.3; }
+  .ach.locked .nm{ color:var(--sub); }
+
+  /* 操作栏独立卡片 */
+  .opBox{ background:var(--stat-bg); border:1px solid var(--card-border); border-radius:14px; padding:12px 14px; }
+  .opSub{ font-size:12px; color:var(--sub); margin:12px 2px 8px; font-weight:600; }
+
+  /* 系统说明 */
+  .intro{ font-size:12px; color:var(--sub); line-height:1.7; background:var(--stat-bg); border:1px solid var(--card-border); border-radius:14px; padding:12px 14px; }
+  .intro p{ margin:0 0 8px; }
+  .intro p:last-child{ margin-bottom:0; }
+  .intro b{ color:var(--ink); }
+
+  /* 数值面板 */
+  #stats{ background:var(--stat-bg); border-radius:14px; padding:12px 14px; }
+  #stats .row{ display:flex; align-items:center; gap:10px; margin:8px 0; }
+  #stats .row .k{ width:36px; font-size:13px; color:var(--sub); }
+  #stats .row .bar{ flex:1; height:8px; border-radius:6px; background:var(--track); overflow:hidden; }
+  #stats .row .bar > i{ display:block; height:100%; border-radius:6px; }
+  #stats .row .v{ width:60px; text-align:right; font-size:13px; font-weight:700; color:var(--ink); }
+  #stats .lv{ text-align:center; font-size:12px; color:var(--ink); margin-top:8px; }
+  #stats .lv b{ color:var(--accent); }
+
+  #row{ display:flex; gap:8px; margin-top:12px; }
+  #row .btn{ flex:1; }
+  #hint{ margin-top:12px; font-size:11px; color:var(--sub); line-height:1.6; text-align:center; }
+  #hint b{color:var(--ink);}
+</style>
+</head>
+<body>
+<div id="card">
+  <div id="handle">
+    <div class="titleWrap">
+      <div class="avatar">喵</div>
+      <div class="titles">
+        <div class="title">月薪喵</div>
+        <div class="subtitle">桌宠操作面板</div>
+      </div>
+    </div>
+    <button class="min" id="minBtn" title="收起面板">—</button>
+  </div>
+  <div id="body">
+    <div class="secTitle">状态（点一下切换；自动 = 按钱包/心情自动选图）</div>
+    <div id="stateWrap" class="grid"></div>
+    <div class="grid" style="margin-top:8px;">
+      <button class="btn ghost" id="autoBtn">自动</button>
+    </div>
+
+    <div class="secTitle">数值</div>
+    <div id="stats">
+      <div class="row"><span class="k">钱包</span><span class="bar"><i id="bWallet" style="background:#D4A574"></i></span><span class="v" id="vWallet">¥0</span></div>
+      <div class="row"><span class="k">心情</span><span class="bar"><i id="bMood" style="background:#7B9F76"></i></span><span class="v" id="vMood">0</span></div>
+      <div class="row"><span class="k">好感</span><span class="bar"><i id="bAff" style="background:#A07856"></i></span><span class="v" id="vAff">0</span></div>
+      <div class="lv">好感等级：<b id="affLv">陌生喵</b></div>
+    </div>
+
+    <div class="secTitle">成就（好感度里程碑解锁的贴图）</div>
+    <div id="achBox" class="achBox"></div>
+
+    <div class="secTitle">操作栏</div>
+    <div class="opBox">
+      <div class="grid">
+        <button class="btn sm" id="playBtn">玩耍</button>
+        <button class="btn sm" id="walkBtn">散步</button>
+        <button class="btn sm" id="teaserBtn">逗猫棒 · Esc退出</button>
+        <button class="btn sm" id="lowBtn">低调模式</button>
+        <button class="btn sm" id="paydayBtn">模拟发工资</button>
+      </div>
+      <button class="btn primary" id="catchBtn">日结 +¥50</button>
+      <div class="footnote">每天可结算一次 · 固定到账 +¥50</div>
+
+      <div class="opSub">健康提醒：每30分喝水 💧 · 每45分站起来 🧍 · 每1时休息 🌿 · 夜间每20分护眼 🌙</div>
+      <div class="grid" style="align-items:center;">
+        <button class="btn sm active" id="remindBtn">已开启</button>
+        <button class="btn sm" id="remindOffBtn">关闭</button>
+      </div>
+
+      <div id="row">
+        <button class="btn ghost" id="randomBtn">随机</button>
+        <button class="btn ghost" id="hidePanelBtn">收起面板</button>
+        <button class="btn ghost" id="hidePetBtn">隐藏桌宠</button>
+      </div>
+    </div>
+
+    <div class="secTitle">系统说明</div>
+    <div class="intro">
+      <p><b>💰 钱包</b>：决定猫的"贫富状态"。工资日（每月 15 号）、模拟发工资、日结都会让它上涨；钱包越高，猫越偏向"休闲高兴"，满级还会触发"炫富"彩蛋。</p>
+      <p><b>😊 心情</b>：随时间缓慢下降；戳、挠、摸头、投喂、玩耍都会回升。心情低猫会"哭/难受"，高则"活跃运动"。</p>
+      <p><b>💗 好感</b>：靠互动（挠 / 摸 / 喂 / 玩 / 逗猫棒）累积，分 陌生 → 熟人(25) → 伙伴(50) → 挚友(80) 四档，每过一档解锁一枚成就贴图。</p>
+    </div>
+
+<div id="hint">右键猫身可<b>摸摸头 / 喂一口 / 捂鼻子扇闻 / 打开操作面板</b> · 单击猫=戳 · 双击=玩耍 · 长按=挠 · <b>Alt+Z</b> 开关猫 · <b>Alt+P</b> 打开面板</div>
+  </div>
+</div>
+
+<script src="assets/yuexinmiao/catalog.js"></script>
+<script src="states.js"></script>
+<script src="controls.js"></script>
+<script>
+const $ = s=>document.querySelector(s);
+const clamp=(v,a=0,b=100)=>Math.max(a,Math.min(b,v));
+const ui = buildStateUI($('#stateWrap'), k=>{ if(window.__panel) window.__panel.setCurrentState(k); });
+const randomBtn = $('#randomBtn');
+
+/* 成就贴图：好感度里程碑解锁（与猫身左侧贴图同源：assets/badges/）
+   阈值与 pet.html 中 BADGE_DEFS 保持一致：25 围巾 / 50 礼帽 / 80 蝴蝶结 */
+const ACH_DEFS = [
+  {th:25, file:'badge-scarf.png', nm:'围巾',   lv:'熟人喵'},
+  {th:50, file:'badge-hat.png',   nm:'礼帽',   lv:'伙伴喵'},
+  {th:80, file:'badge-bow.png',   nm:'蝴蝶结', lv:'挚友喵'},
+];
+function renderAch(aff){
+  const box = $('#achBox'); if(!box) return; box.innerHTML='';
+  ACH_DEFS.forEach(d=>{
+    const ok = aff>=d.th;
+    const el=document.createElement('div'); el.className='ach'+(ok?'':' locked');
+    el.innerHTML = '<img src="assets/badges/'+d.file+'" alt="'+d.nm+'" />'
+      + '<div class="nm">'+d.nm+'</div>'
+      + '<div class="th">'+(ok?d.lv:'需'+d.th+'好感')+'</div>';
+    box.appendChild(el);
+  });
+}
+renderAch(0);   // 初始先画（未收到数值前显示全部锁定）
+
+/* 状态按钮 + 自动 */
+$('#autoBtn').onclick = ()=>{ if(window.__panel) window.__panel.setAuto(); };
+
+/* 随机全图 */
+randomBtn.onclick = ()=>{
+  if(window.__panel) window.__panel.toggleRandom();
+  randomBtn.classList.toggle('active');
+  if(randomBtn.classList.contains('active')) ui.setActive('random');
+};
+/* 收起面板 */
+$('#hidePanelBtn').onclick = ()=>{ if(window.__panel) window.__panel.hideSelf(); };
+$('#hidePetBtn').onclick = ()=>{ if(window.__panel) window.__panel.togglePet(); };
+$('#minBtn').onclick = ()=>{ if(window.__panel) window.__panel.hideSelf(); };
+
+/* 互动按钮 */
+$('#playBtn').onclick   = ()=>{ if(window.__panel) window.__panel.play(); };
+$('#catchBtn').onclick  = ()=>{ if(window.__panel) window.__panel.startCatch(); };
+$('#walkBtn').onclick   = ()=>{ if(window.__panel) window.__panel.toggleWalk(); };
+$('#teaserBtn').onclick = ()=>{ if(window.__panel) window.__panel.toggleTeaser(); };
+$('#lowBtn').onclick    = ()=>{ if(window.__panel) window.__panel.toggleLowPower(); };
+$('#paydayBtn').onclick = ()=>{ if(window.__panel) window.__panel.simulatePayday(); };
+
+/* 健康提醒设置（开关语义：1=开 / 0=关） */
+const rBtn=$('#remindBtn'), rOff=$('#remindOffBtn');
+rBtn.onclick = ()=>{ if(window.__panel) window.__panel.setReminder(1); rBtn.classList.add('active'); rOff.classList.remove('active'); };
+rOff.onclick = ()=>{ if(window.__panel) window.__panel.setReminder(0); rOff.classList.add('active'); rBtn.classList.remove('active'); };
+
+/* 标题栏拖拽（按钮区域不拖） */
+const handle = $('#handle');
+let drag=false, ox=0, oy=0;
+handle.addEventListener('pointerdown', e=>{
+  if(e.target.closest('button')) return;
+  drag=true; handle.style.cursor='grabbing';
+  const r=handle.getBoundingClientRect(); ox=e.clientX-r.left; oy=e.clientY-r.top;
+  handle.setPointerCapture(e.pointerId);
+});
+handle.addEventListener('pointermove', e=>{ if(drag && window.__panel) window.__panel.dragBy(e.movementX, e.movementY); });
+handle.addEventListener('pointerup',   e=>{ drag=false; handle.style.cursor='grab'; });
+
+/* 主进程通知：状态变化 → 高亮；数值 → 刷新；开关标记 → active */
+function setActiveBtn(id, on){ const b=$(id); if(b) b.classList.toggle('active', on); }
+if(window.__panel){
+  window.__panel.onStateChanged(key=>{
+    ui.setActive(key);
+    randomBtn.classList.toggle('active', key==='random');
+    setActiveBtn('#autoBtn', key==='auto');
+  });
+  window.__panel.onPetVisibility(hidden=>{
+    $('#hidePetBtn').textContent = hidden ? '显示桌宠' : '隐藏桌宠';
+  });
+  window.__panel.onStats(s=>{
+    $('#bWallet').style.width = clamp(Math.round(s.wallet/100))+'%'; $('#vWallet').textContent = '¥'+Math.round(s.wallet);
+    $('#bMood').style.width   = clamp(s.mood)+'%';  $('#vMood').textContent   = Math.round(s.mood);
+    $('#bAff').style.width    = clamp(s.affinity)+'%'; $('#vAff').textContent  = Math.round(s.affinity);
+    $('#affLv').textContent   = s.level||'陌生喵';
+    renderAch(s.affinity);   // 好感变化 → 同步刷新成就贴图区
+  });
+  window.__panel.onFlags(f=>{
+    setActiveBtn('#walkBtn', !!f.walking);
+    setActiveBtn('#teaserBtn', !!f.teaser);
+    setActiveBtn('#lowBtn', !!f.lowPower);
+  });
+}
+</script>
+</body>
+</html>

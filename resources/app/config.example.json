@@ -1,0 +1,23 @@
+{
+  "_说明": "本文件仅作配置示例。实际配置在 pet.html 顶部的 const PET = {...} 里（内联，避免 file:// 下跨域读取失败）。改完刷新即可生效。",
+  "name": "Mochi Cat",
+  "size": 170,
+  "decay": true,
+  "sadState": "sad",
+  "states": [
+    { "key": "idle",  "label": "待机",     "src": "assets/mochi-idle.gif" },
+    { "key": "happy", "label": "开心",     "src": "assets/mochi-happy.gif" },
+    { "key": "sad",   "label": "生无可恋", "src": "assets/mochi-sad.gif" },
+    { "key": "phone", "label": "摸鱼",     "src": "assets/mochi-phone.gif" },
+    { "key": "sleep", "label": "睡觉",     "src": "assets/mochi-sleep.gif" },
+    { "key": "shock", "label": "震惊",     "src": "assets/mochi-shock.gif" }
+  ],
+  "meters": [
+    { "key": "wallet", "label": "钱包", "color": "#f6c453", "start": 80 },
+    { "key": "mood",   "label": "心情", "color": "#7ec8e3", "start": 90 }
+  ],
+  "lines": {
+    "idle": "在发呆…", "happy": "发工资啦！", "sad": "又吃土了…",
+    "phone": "摸鱼ing", "sleep": "zzz 回血中", "shock": "又要加班？！"
+  }
+}

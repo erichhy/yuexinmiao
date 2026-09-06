@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>月薪喵 加载自检</title>
+<style>
+  body{font-family:system-ui,"Microsoft YaHei",sans-serif;background:#fff;color:#222;margin:0;padding:20px;line-height:1.5}
+  h2{margin-top:0}
+  .sec{margin:16px 0;padding:14px;border:1px solid #e3e3e8;border-radius:10px}
+  .sec h3{margin:0 0 8px;font-size:15px}
+  .row{display:flex;align-items:center;gap:10px;margin:6px 0}
+  .ok{color:#0a0;font-weight:700}
+  .fail{color:#d00;font-weight:700}
+  .warn{color:#c70;font-weight:700}
+  img{width:72px;height:72px;object-fit:contain;border:1px solid #ccc;border-radius:6px;background:#fafafa}
+  pre{background:#f6f6f6;padding:10px;border-radius:8px;white-space:pre-wrap;word-break:break-all;font-size:12px;max-height:220px;overflow:auto}
+  #verdict{position:sticky;top:0;background:#222;color:#fff;padding:12px 16px;border-radius:10px;font-size:14px;font-weight:700;margin-bottom:12px}
+  .hint{color:#666;font-size:13px}
+</style>
+</head>
+<body>
+<h2>月薪喵 · 加载自检（在浏览器打开本页即可）</h2>
+<div id="verdict">检测中…</div>
+
+<div class="sec">
+  <h3>① 资源目录推断</h3>
+  <pre id="paths"></pre>
+</div>
+
+<div class="sec">
+  <h3>② GIF 图片加载（相对路径，与 pet 窗口无 preload 时一致）</h3>
+  <div id="gifs"></div>
+</div>
+
+<div class="sec">
+  <h3>③ GIF 图片加载（绝对编码 file:// 路径，与 pet 窗口有 preload 时一致）</h3>
+  <div id="gifs2"></div>
+</div>
+
+<div class="sec">
+  <h3>④ 依赖脚本 catalog.js / states.js / controls.js</h3>
+  <div id="scripts">加载依赖脚本中…</div>
+</div>
+
+<div class="sec">
+  <h3>⑤ 自定义脚本加载测试（用绝对编码路径显式加载，验证中文用户名下能否加载）</h3>
+  <div id="scripts2">测试中…</div>
+</div>
+
+<div class="sec">
+  <h3>原始日志</h3>
+  <pre id="log"></pre>
+</div>
+
+<script>
+function log(m){ document.getElementById('log').textContent += m + "\n"; }
+const $ = s => document.getElementById(s);
+
+// 与 preload-pet.js 相同的算法：pathToFileURL(__dirname/assets/yuexinmiao)
+// 浏览器里没有 __dirname，用 location 推断 resources/app 目录，再构造绝对编码路径
+const here = location.href.substring(0, location.href.lastIndexOf('/')+1); // .../resources/app/
+const relAsset = 'assets/yuexinmiao';
+const absAsset = new URL(relAsset, location.href).href;   // 浏览器编码后的绝对 file:// 路径
+const absApp   = new URL('.', location.href).href;        // 应用根目录（绝对编码）
+
+$('paths').textContent =
+  '页面地址: ' + location.href + '\n' +
+  '相对资源目录: ' + here + relAsset + '\n' +
+  '绝对编码资源目录(ASSET_BASE): ' + absAsset + '\n' +
+  '绝对编码应用根目录(appBase): ' + absApp;
+
+let gifPass = 0, gifTotal = 0;
+function testGif(container, base, files){
+  const c = $(container); c.textContent = '';
+  files.forEach(f=>{
+    const row = document.createElement('div'); row.className='row';
+    const img = document.createElement('img');
+    const label = document.createElement('span');
+    const src = base + '/' + f;
+    img.src = src; gifTotal++;
+    img.onload = ()=>{ label.innerHTML='<span class="ok">成功</span> '+f; gifPass++; log('GIF OK   '+src); checkVerdict(); };
+    img.onerror = ()=>{ label.innerHTML='<span class="fail">失败</span> '+f; log('GIF FAIL '+src); checkVerdict(); };
+    row.appendChild(img); row.appendChild(label); c.appendChild(row);
+  });
+}
+const FILES = ['001.gif','002.gif','003.gif','020.gif','038.gif'];
+testGif('gifs', here + relAsset, FILES);
+testGif('gifs2', absAsset, FILES);
+
+// ④ 依赖脚本：当前页面已用相对路径隐式加载（因为本页 head 没有引它们，这里用绝对编码路径显式加载做对照）
+// ⑤ 显式加载并检测全局变量
+function loadScriptAndCheck(url, name, globalName){
+  return new Promise(res=>{
+    const s = document.createElement('script');
+    s.src = url;
+    s.onload = ()=>{ res({name, url, ok:true, defined: typeof window[globalName]!=='undefined'}); };
+    s.onerror = ()=>{ res({name, url, ok:false, defined:false}); };
+    document.head.appendChild(s);
+  });
+}
+(async ()=>{
+  const results = [];
+  results.push(await loadScriptAndCheck(absAsset + '/catalog.js', 'catalog.js', 'GIF_CATALOG'));
+  results.push(await loadScriptAndCheck(absApp + '/states.js', 'states.js', 'stateLists'));
+  results.push(await loadScriptAndCheck(absApp + '/controls.js', 'controls.js', 'buildStateUI'));
+  const c = $('scripts2'); c.textContent='';
+  let allOk = true;
+  results.forEach(r=>{
+    const row = document.createElement('div'); row.className='row';
+    const tag = r.ok ? (r.defined?'<span class="ok">加载并定义 ✓</span>':'<span class="warn">加载但全局未定义</span>') : '<span class="fail">加载失败 ✗</span>';
+    if(!r.ok) allOk=false;
+    row.innerHTML = tag + ' ' + r.name + ' <span class="hint">('+ (r.defined?('全局 '+Object.keys(r).filter(k=>k==='defined').join('')) : '全局未定义') +')</span>';
+    c.appendChild(row);
+    log((r.ok?'SCRIPT OK  ':'SCRIPT FAIL ')+r.url+' defined='+r.defined);
+  });
+  // 显式加载后现在可以检查全局
+  $('scripts').innerHTML = 'GIF_CATALOG='+(typeof GIF_CATALOG!=='undefined'?('有 '+GIF_CATALOG.length+' 张'):'未定义')+
+    ' ｜ stateLists='+(typeof stateLists!=='undefined'?('有 '+Object.keys(stateLists).length+' 类'):'未定义')+
+    ' ｜ STATE_ORDER='+(typeof STATE_ORDER!=='undefined'?'已定义':'未定义')+
+    ' ｜ buildStateUI='+(typeof buildStateUI!=='undefined'?'已定义':'未定义');
+  window.__scriptAllOk = allOk;
+  checkVerdict();
+})();
+
+function checkVerdict(){
+  const v = $('verdict');
+  const gifDone = gifPass + ($('gifs').querySelectorAll('.fail').length + $('gifs').querySelectorAll('.ok').length) >= FILES.length*2;
+  if(gifPass===0 && gifTotal>0){ v.style.background='#b00'; v.textContent='❌ GIF 全部加载失败 → 是「文件/路径」问题（与 Electron 无关）。把本页结果截图发我。'; return; }
+  if(gifPass>0 && gifTotal>0 && gifPass<gifTotal){
+    v.style.background='#c70'; v.textContent='⚠️ 部分 GIF 失败（'+gifPass+'/'+gifTotal+'）。'; return;
+  }
+  if(gifPass===gifTotal && gifTotal>0){
+    if(window.__scriptAllOk){ v.style.background='#0a0'; v.textContent='✅ 一切正常：GIF 与依赖脚本都能在浏览器加载。若 Electron 里仍无猫，则是 Electron 窗口/进程问题（请看 pet-boot.log / pet-render.log）。'; }
+    else { v.style.background='#c70'; v.textContent='⚠️ GIF 能加载，但依赖脚本加载失败 → 猫逻辑缺数据。把本页结果截图发我。'; }
+    return;
+  }
+  // 还没测完
+  v.style.background='#444'; v.textContent='检测中…（GIF '+gifPass+'/'+gifTotal+'）';
+}
+</script>
+</body>
+</html>

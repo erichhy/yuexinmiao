@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<style>html,body{margin:0;width:100%;height:100%;background:transparent;}</style>
+</head>
+<body></body>
+<script src="preload-cursor.js"></script>
+<script>
+  // 全屏透明覆盖窗：只监听鼠标坐标并上报主进程，不拦截任何点击（forward 已设）
+  let last = 0;
+  window.addEventListener('mousemove', e => {
+    const now = Date.now();
+    if(now - last < 24) return;   // 节流：约 40fps
+    last = now;
+    if(window.__cursor) window.__cursor.move(e.clientX, e.clientY);
+  }, true);
+</script>
+</body>
+</html>

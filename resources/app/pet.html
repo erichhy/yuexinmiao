@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>月薪喵 · 桌面宠物</title>
+<style>
+  :root{
+    --ink:#2b2b33; --sub:#8a8a96; --accent:#ff8aa0; --accent2:#7ec8e3;
+    --size:160px;
+  }
+  *{box-sizing:border-box; -webkit-user-select:none; user-select:none;}
+  html,body{height:100%; margin:0;}
+  body{
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    background:transparent; color:var(--ink); overflow:hidden;
+  }
+  body.preview{background:linear-gradient(135deg,#fef6f0,#eef4fb);}
+
+  #pet{
+    position:fixed; left:50%; top:60%; transform:translate(-50%,-50%);
+    width:var(--size); cursor:grab; touch-action:none; z-index:50;
+    transition:filter .6s, opacity .25s;
+  }
+  /* 全窗透明拖动层：覆盖整个宠物窗口，任意位置按下都能拖动整个桌宠；
+     z-index 高于所有宠物 UI(≤55) 但低于投喂金币(.coin z:75)/逗猫棒(#laser z:76)，故后者仍可被点击 */
+  #dragLayer{position:fixed; inset:0; z-index:70; pointer-events:auto; cursor:grab;}
+  #dragLayer.dragging{cursor:grabbing;}
+  #pet.dragging{cursor:grabbing;}
+  #pet.bounce{animation:bounce .5s ease;}
+  @keyframes bounce{0%{transform:translate(-50%,-50%) scale(1)}30%{transform:translate(-50%,-62%) scale(1.08)}100%{transform:translate(-50%,-50%) scale(1)}}
+  #pet.throw .frame{animation:thr .55s cubic-bezier(.3,1.4,.5,1);}
+  @keyframes thr{0%{transform:translate(0,0) rotate(0)}40%{transform:translate(var(--tx,20px),var(--ty,-30px)) rotate(var(--rot,18deg)) scale(1.1)}100%{transform:translate(0,0) rotate(0)}}
+
+  .frame{
+    position:relative; width:100%; aspect-ratio:1/1;
+    display:flex; align-items:center; justify-content:center;
+    border-radius:24px; overflow:visible; background:transparent;
+  }
+  body.preview .frame{
+    background:radial-gradient(circle at 50% 35%, #ffffff, #f3f3f7);
+    box-shadow:0 18px 40px rgba(80,80,120,.18);
+  }
+  .frame img{width:100%; height:100%; object-fit:contain; display:block; image-rendering:auto;}
+  .placeholder{
+    width:100%; height:100%; display:flex; flex-direction:column; gap:6px;
+    align-items:center; justify-content:center; text-align:center; padding:10px;
+    color:var(--sub); font-size:12px; line-height:1.5;
+    border:2px dashed rgba(0,0,0,.12); border-radius:24px;
+  }
+
+  /* 顶部状态条（钱包 / 心情 / 好感）：紧凑居中，紧贴猫头顶，不占满整窗 */
+  #meters{ position:fixed; left:50%; top:calc(60% - var(--size)/2 - 34px); transform:translateX(-50%); z-index:55;
+    display:flex; gap:4px; justify-content:center; width:auto; pointer-events:none; }
+  /* 钱包/心情/好感 状态条：强制单行（不转行），避免「💰钱包 ¥520」被挤成两行后顶到左侧成就贴图 */
+  .meter{flex:0 0 auto; width:66px; white-space:nowrap;}
+  .meter .lab{font-size:9px; color:var(--sub); margin-bottom:2px; display:flex; justify-content:space-between; gap:3px; white-space:nowrap;}
+  .meter .lab [data-v]{font-size:8px; white-space:nowrap;}
+  .meter .bar{height:6px; border-radius:5px; background:rgba(0,0,0,.10); overflow:hidden;}
+  .meter .fill{height:100%; border-radius:5px; transition:width .4s;}
+
+  /* 下班倒计时小条：状态条正上方 */
+  #offwork{ position:fixed; left:50%; top:calc(60% - var(--size)/2 - 62px); transform:translateX(-50%); z-index:55;
+    font-size:11px; font-weight:700; color:#7a6a3a; background:rgba(255,247,225,.9);
+    border:1px solid #ffe2ad; padding:3px 10px; border-radius:10px; pointer-events:none; white-space:nowrap; }
+
+  #speech{
+    position:fixed; left:50%; top:calc(60% - var(--size)/2 - 92px);
+    transform:translateX(-50%); z-index:65; display:none;
+    background:#fff; color:var(--ink); padding:8px 14px; border-radius:14px;
+    font-size:14px; font-weight:600; box-shadow:0 8px 22px rgba(60,60,90,.18); white-space:nowrap; max-width:90vw;
+  }
+  #speech:after{content:""; position:absolute; left:50%; bottom:-7px; transform:translateX(-50%);
+    border:7px solid transparent; border-top-color:#fff; border-bottom:0;}
+
+  #banner{
+    position:fixed; top:calc(60% - var(--size)/2 - 14px); left:50%; transform:translateX(-50%);
+    max-width:92vw; padding:8px 14px; z-index:70; display:none;
+    background:#fff7ef; border:1px solid #ffd9b8; color:#9a5a2b;
+    border-radius:14px; font-size:12px; line-height:1.5; box-shadow:0 8px 24px rgba(200,120,40,.12); text-align:center;
+  }
+  .heart{position:fixed; z-index:80; pointer-events:none; font-size:20px; color:var(--accent);
+    animation:hp 1s ease-out forwards; text-shadow:0 2px 4px rgba(255,120,140,.4);}
+  @keyframes hp{0%{opacity:1; transform:translateY(0) scale(.7)}100%{opacity:0; transform:translateY(-70px) scale(1.2)}}
+
+  /* 接工资 / 节日：掉落硬币 & 撒花 */
+  #coins{position:fixed; inset:0; z-index:75; pointer-events:none;}
+  .coin{position:absolute; top:-30px; font-size:22px; pointer-events:auto; cursor:pointer;
+    animation:fall linear forwards; filter:drop-shadow(0 2px 3px rgba(200,150,40,.5));}
+  @keyframes fall{from{transform:translateY(0)}to{transform:translateY(105vh)}}
+  #confetti{position:fixed; inset:0; z-index:78; pointer-events:none; overflow:hidden;}
+  .confetti{position:absolute; top:-20px; width:10px; height:14px; border-radius:2px;
+    animation:fall linear forwards; opacity:.95;}
+  @keyframes confall{from{transform:translateY(0) rotate(0)}to{transform:translateY(110vh) rotate(540deg)}}
+
+  /* 逗猫棒：跟随光点 */
+  #laser{position:fixed; z-index:76; width:16px; height:16px; border-radius:50%;
+    background:radial-gradient(circle,#ff6b6b,#ff2d2d); box-shadow:0 0 10px #ff4d4d; display:none; pointer-events:none;}
+
+  /* 成就贴图：好感里程碑解锁，贴在 GIF 左侧空白处（纯视觉，不穿戴） */
+  #badges{position:absolute; top:50%; left:-16px; transform:translateY(-50%);
+    display:flex; flex-direction:column; gap:6px; pointer-events:none; z-index:45;}
+  .badge{width:34px; height:34px; object-fit:contain; display:block;
+    filter:drop-shadow(0 3px 6px rgba(60,60,90,.22)); pointer-events:auto;}
+
+  /* 浏览器预览用的底部状态栏（exe 里隐藏） */
+  #dock{
+    position:fixed; left:50%; bottom:14px; transform:translateX(-50%);
+    display:none; flex-wrap:wrap; gap:8px; align-items:center; justify-content:center;
+    max-width:96vw; padding:10px 14px; z-index:60;
+    background:rgba(255,255,255,.82); border:1px solid rgba(0,0,0,.08);
+    border-radius:18px; backdrop-filter:blur(14px); box-shadow:0 10px 30px rgba(60,60,90,.14);
+  }
+  body.preview #dock{display:flex;}
+  .btn{ border:none; background:#fff; color:var(--ink); cursor:pointer;
+    padding:7px 11px; border-radius:12px; font-size:13px; font-weight:600;
+    box-shadow:0 2px 6px rgba(0,0,0,.06); transition:transform .12s, background .15s; }
+  .btn:hover{transform:translateY(-1px);}
+  .btn.active{background:var(--accent); color:#fff;}
+  .btn.ghost{background:transparent; box-shadow:none; color:var(--sub);}
+</style>
+</head>
+<body>
+  <div id="dragLayer"></div>
+  <div id="banner"></div>
+  <div id="speech"></div>
+  <div id="offwork"></div>
+  <div id="meters"></div>
+  <div id="coins"></div>
+  <div id="confetti"></div>
+  <div id="laser"></div>
+
+  <div id="pet"><div class="frame" id="frame"></div><div id="badges"></div></div>
+
+  <!-- 仅浏览器预览显示；exe 中操作在独立面板窗口 -->
+  <div id="dock"><span id="stateBtns" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;"></span></div>
+
+<script>
+  /* 依赖脚本改用「绝对 file:// 路径」加载：彻底规避中文用户名下相对路径加载失败
+     （catalog.js 在 assets/yuexinmiao 下；states.js / controls.js 在应用根目录）。
+     有 preload 时用已百分号编码的绝对路径；浏览器预览（无 preload）时退回相对路径。 */
+  (function(){
+    var APP_BASE = (window.__pet && window.__pet.appBase) || (location.href.split('/').slice(0,-1).join('/'));
+    var ASSET    = (window.__pet && window.__pet.assetBase) || (APP_BASE + '/assets/yuexinmiao');
+    document.write('<scr'+'ipt src="'+ASSET+'/catalog.js"></scr'+'ipt>');
+    document.write('<scr'+'ipt src="'+APP_BASE+'/states.js"></scr'+'ipt>');
+    document.write('<scr'+'ipt src="'+APP_BASE+'/controls.js"></scr'+'ipt>');
+  })();
+</script>
+<script>
+/* =========================================================================
+   月薪喵 · 猫窗口（渲染 / 拖拽 / 状态机 / 全互动）
+   数值模型：wallet(钱包) mood(心情) affinity(好感)
+   · 钱包/心情共同决定「自动模式」下显示的 GIF（autoState 决策表）
+   · 面板点「自动」回到数值驱动；点具体状态则强制覆盖
+   · 新增：昼夜色调、节日撒花、好感成就贴图、低调省电模式、健康提醒
+   ========================================================================= */
+const _log = (m)=>{ try{ console.log('[pet] '+m); }catch(_){} };
+window.addEventListener('error', e=>{ _log('WINDOW_ERROR '+(e.error&&e.error.stack||e.message)); });
+// 可见调试框：任何关键错误直接浮在猫窗口上（红底白字），无需读日志也能看到问题
+function showDebug(msg){
+  try{
+    let d=document.getElementById('debugbox');
+    if(!d){ d=document.createElement('div'); d.id='debugbox';
+      d.style.cssText='position:fixed;left:6px;top:6px;right:6px;z-index:9999;background:rgba(190,0,0,.88);color:#fff;font:12px/1.45 monospace;padding:8px 10px;border-radius:8px;white-space:pre-wrap;pointer-events:none;';
+      document.body.appendChild(d); }
+    d.textContent += msg+'\n';
+  }catch(_){}
+}
+// 资源目录：优先用 preload 传来的绝对（已编码）file:// 路径，彻底规避中文用户名下的相对路径加载失败
+const ASSET_BASE = (window.__pet && window.__pet.assetBase) || (location.href.split('/').slice(0,-1).join('/') + '/assets/yuexinmiao');
+const pathOf = file => ASSET_BASE + '/' + file;
+_log('boot href='+location.href+' assetBase='+ASSET_BASE+' catalog='+(typeof GIF_CATALOG!=='undefined'?GIF_CATALOG.length:'UNDEF')+' stateLists='+(typeof stateLists!=='undefined'?Object.keys(stateLists).join(','):'UNDEF'));
+if(typeof GIF_CATALOG==='undefined'){ showDebug('❌ catalog.js 未加载 → GIF_CATALOG 未定义（猫图无法显示）。请用浏览器打开 gif-check.html 验证。'); }
+if(typeof stateLists==='undefined'){ showDebug('❌ states.js 未加载 → stateLists 未定义（猫图无法显示）。'); }
+const $ = s=>document.querySelector(s);
+const clamp = (v,a=0,b=100)=>Math.max(a,Math.min(b,v));
+const pet = $('#pet'), frame = $('#frame'), dragLayer = $('#dragLayer');
+
+/* ---------- 持久化 ---------- */
+const SAVE_KEY = 'yuexinmiao_save_v1';
+function loadSave(){ try{ return JSON.parse(localStorage.getItem(SAVE_KEY))||{}; }catch(e){ return {}; } }
+const saved = loadSave();
+let dead = (typeof saved.dead==='boolean') ? saved.dead : false;   // 死亡态标记：为 true 时下次打开仍展示哭脸+横幅，直到“重新投胎”
+function persist(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify({
+  wallet:stats.wallet, mood:stats.mood, affinity:stats.affinity,
+  lastSettle:lastSettle, lastPayday:lastPayday, lastHoliday:lastHoliday,
+  lastExpenseDay:lastExpenseDay,
+  lowPower:lowPower, remindMin:remindMin,
+  teaserAffDate:teaserAffDate, teaserAffGain:teaserAffGain, healthEnabled:healthEnabled,
+  dead:dead
+})); }catch(e){} }
+
+/* ---------- 数值 ---------- */
+const stats = {
+  wallet: (typeof saved.wallet==='number') ? saved.wallet : 520,   // ¥
+  mood:   clamp((typeof saved.mood==='number') ? saved.mood : 75),
+  affinity: clamp((typeof saved.affinity==='number') ? saved.affinity : 10),
+};
+let lastSettle  = saved.lastSettle  || '';   // YYYY-MM-DD（接工资日结）
+let lastPayday  = saved.lastPayday  || '';   // YYYY-MM（发工资月）
+let lastHoliday = saved.lastHoliday || '';   // MM-DD（已展示过的节日，避免重复撒花）
+let lowPower    = (typeof saved.lowPower==='boolean') ? saved.lowPower : false;   // 低调省电模式
+let healthEnabled = (typeof saved.healthEnabled==='boolean') ? saved.healthEnabled : true;  // 健康提醒总开关（喝水30分/休息1h/夜间护眼），默认开
+let teaserAffDate = saved.teaserAffDate || '';   // 逗猫棒亲密度「按天」计数日期 YYYY-MM-DD
+let teaserAffGain = (typeof saved.teaserAffGain==='number') ? saved.teaserAffGain : 0;   // 当天逗猫棒已涨亲密度（上限 5）
+
+/* ---------- 破产死亡机制：每日生活开支 + 玩耍花费 + 钱包为负即死 ---------- */
+const DAILY_EXPENSE = 20;    // 每日固定生活开支（跨天自动扣除）
+const PLAY_COST = 50;        // 每次玩耍花费（比日常开支高，制造「要工作养猫」的压力）
+let lastExpenseDay = (typeof saved.lastExpenseDay==='string') ? saved.lastExpenseDay : '';  // 上次扣生活开支的日期
+
+function walletLevel(){ return clamp(Math.round(stats.wallet/100),0,100); } // ¥10000 -> 100
+function dateStr(d=new Date()){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function monthStr(d=new Date()){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+
+/* =========================================================================
+   钱包 / 心情 → 自动状态（核心：各种数值对应不同 GIF）
+   决策优先级（从上到下）：
+     1. 工资日(paydayActive) → rich   炫富/高兴
+     2. 心情低 (m<25)         → sad   哭 / 难受
+     3. 金钱低 (w<25)         → work  打工
+     4. 金钱多 (w>=60)        → happy 休闲 / 高兴
+     5. 心情好 (m>=65)        → sport 活跃（奔跑/冲刺/骑车等运动）
+     6. 心情中上 (m>=40)      → happy 休闲高兴
+   （已去掉「待机 idle」图：默认回落到休闲高兴）
+   ========================================================================= */
+const PAYDAY = 15;            // 每月发工资日（可自行改）
+let paydayActive = false;
+function autoState(){
+  const m = stats.mood, w = walletLevel();
+  if(paydayActive) return 'rich';   // 工资日：炫富彩蛋
+  if(m < 25) return 'sad';          // 心情低 → 哭 / 难受
+  if(w < 25) return 'work';         // 金钱低 → 打工
+  if(w >= 60) return 'happy';       // 金钱多 → 休闲和高兴
+  if(m >= 65) return 'sport';       // 心情好 → 活跃（运动）
+  return 'happy';                   // 默认 → 休闲高兴（已去掉待机图）
+}
+
+/* ---------- 状态机 ---------- */
+let forcedState = null;       // null = 自动(数值驱动)；否则面板强制
+let currentState = autoState();
+let currentItem = null;       // 当前显示的 GIF 元数据（用于摸摸头气泡等）
+let stateIndex = {}; if(typeof STATE_ORDER!=='undefined'){ STATE_ORDER.forEach(k=>stateIndex[k]=0); } else { showDebug('❌ STATE_ORDER 未定义（states.js 未加载）。'); }
+let cycleTimer = null;
+let decayTimer=null, quipTimer=null, tipsTimer=null, healthTickTimer=null, hc={water:0,stand:0,rest:0,night:0};
+let lockedItem = null;   // 锁定某张特定 GIF（散步/玩耍/逗猫棒），优先于状态轮播
+
+function pickNext(state){
+  const list = stateLists[state]; if(!list||!list.length) return null;
+  stateIndex[state] = (stateIndex[state]+1) % list.length;
+  return list[stateIndex[state]];
+}
+function render(item, line){
+  if(!item) return;
+  currentItem = item;
+  frame.innerHTML = '';
+  const img = document.createElement('img');
+  img.alt = item.name;
+  img.style.width='100%';
+  img.style.height='100%';
+  img.style.objectFit='contain';
+  img.onload = ()=> _log('IMG_OK '+item.file);
+  img.onerror = ()=>{ _log('IMG_FAIL '+item.file+' base='+ASSET_BASE); showDebug('❌ 图片加载失败: '+item.file+'\n路径: '+pathOf(item.file)); frame.innerHTML = '<div class="placeholder"><b>图片未找到</b><span style="font-size:11px">'+item.file+'</span></div>'; };
+  img.src = pathOf(item.file);
+  frame.appendChild(img);      // 直接挂载，不等待 onload（避免某些 GIF 解码不触发 onload 导致空白）
+  if(line) say(line);
+}
+function say(txt, ms=1600){ const s=$('#speech'); s.textContent=txt; s.style.display='block'; clearTimeout(say._t); say._t=setTimeout(()=>s.style.display='none', ms); }
+function showBanner(html, ms=3600){ const b=$('#banner'); b.innerHTML=html; b.style.display='block'; clearTimeout(showBanner._t); showBanner._t=setTimeout(()=>b.style.display='none', ms); }
+
+function setState(key){           // 面板强制某个状态
+  if(!stateLists[key]) return;
+  forcedState = key; currentState = key;
+  render(pickNext(key) || stateLists[key][0]);
+  if(window.__pet) window.__pet.notifyStateChanged(key);
+}
+function setAuto(){                // 回到数值驱动
+  forcedState = null; tick();
+  if(window.__pet) window.__pet.notifyStateChanged('auto');
+}
+/* 临时状态：展示一段时间后自动回到数值驱动（用于投喂/玩耍/戳） */
+let transientTimer=null;
+function transientState(key, ms=1500){
+  if(!stateLists[key]) return;
+  forcedState = key; currentState = key;
+  render(pickNext(key) || stateLists[key][0]);
+  if(window.__pet) window.__pet.notifyStateChanged(key);
+  clearTimeout(transientTimer);
+  transientTimer = setTimeout(()=>{ if(forcedState===key){ forcedState=null; tick(); } }, ms);
+}
+function tick(){
+  if(lockedItem){ if(currentItem!==lockedItem) render(lockedItem); currentState=lockedItem.state; return; }
+  const s = forcedState || autoState();
+  currentState = s;
+  render(pickNext(s) || (stateLists[s] && stateLists[s][0]));
+  if(window.__pet) window.__pet.notifyStateChanged(forcedState ? s : 'auto');
+}
+/* 数值变化时：若「自动状态」结果与当前不同，立即换图（不必等整分钟），但不打断锁定/强制/移动 */
+function maybeRevealState(){
+  if(dead) return;
+  if(lockedItem || forcedState || walking || teaser) return;
+  const s = autoState();
+  if(s !== currentState){ currentState = s; render(pickNext(s) || (stateLists[s] && stateLists[s][0])); if(window.__pet) window.__pet.notifyStateChanged('auto'); }
+}
+/* 锁定显示某一张特定 GIF（散步/玩耍/逗猫棒用，不再在状态池里轮播） */
+function setItemByFile(file, line){
+  const it = GIF_CATALOG.find(x=>x.file===file);
+  if(!it) return;
+  lockedItem = it; render(it, line);
+  if(window.__pet) window.__pet.notifyStateChanged(it.state);
+}
+const ROTATE_MS = 60000;          // 每 1 分钟切换当前状态的另一张图
+function startCycle(){
+  clearInterval(cycleTimer);
+  cycleTimer = setInterval(tick, ROTATE_MS);
+}
+
+/* ---------- 状态条 ---------- */
+const meterDefs = [
+  {key:'wallet',   label:'💰钱包', color:'#f6c453', money:true},
+  {key:'mood',     label:'😊心情', color:'#7ec8e3'},
+  {key:'affinity', label:'💗好感', color:'#ff8aa0'},
+];
+meterDefs.forEach(m=>{
+  const wrap=document.createElement('div'); wrap.className='meter';
+  wrap.innerHTML=`<div class="lab"><span>${m.label}</span><span data-v></span></div>
+    <div class="bar"><div class="fill" style="background:${m.color}"></div></div>`;
+  $('#meters').appendChild(wrap);
+  m._fill=wrap.querySelector('.fill'); m._v=wrap.querySelector('[data-v]');
+});
+/* 成就贴图定义（必须放在 paintMeters 首次调用之前，否则触发 TDZ：Cannot access 'BADGE_DEFS' before initialization） */
+const BADGE_DEFS = [
+  {th:80, file:'badge-bow.png',   title:'挚友喵：蝴蝶结贴图'},
+  {th:50, file:'badge-hat.png',   title:'伙伴喵：礼帽贴图'},
+  {th:25, file:'badge-scarf.png', title:'熟人喵：围巾贴图'},
+];
+
+function paintMeters(){
+  meterDefs.forEach(m=>{
+    if(m.money){ m._fill.style.width=walletLevel()+'%'; m._v.textContent='¥'+Math.round(stats.wallet); }
+    else { const v=clamp(stats[m.key]); m._fill.style.width=v+'%'; m._v.textContent=Math.round(v); }
+  });
+  renderBadges();   // 好感变化 → 刷新成就贴图
+}
+paintMeters();
+function notifyStats(){ if(window.__pet) window.__pet.notifyStats({wallet:stats.wallet, mood:stats.mood, affinity:stats.affinity, level:affinityLabel()}); }
+
+/* ---------- 成就贴图：好感度里程碑解锁，贴在 GIF 左侧空白处（不穿戴） ---------- */
+function renderBadges(){
+  const b=$('#badges'); if(!b) return; b.innerHTML='';
+  const a=stats.affinity;
+  BADGE_DEFS.forEach(d=>{
+    if(a>=d.th){
+      const img=document.createElement('img');
+      img.className='badge';
+      img.src='assets/badges/'+d.file;
+      img.alt=d.title; img.title=d.title;
+      b.appendChild(img);
+    }
+  });
+}
+
+/* 缓慢衰减：心情随时间下降（受低调模式控制） */
+function startLoops(){
+  if(dead) return;       // 死亡态：不启动衰减/吐槽/提醒，保持静止
+  if(lowPower) return;   // 低调模式：暂停一切后台循环，省内存
+  if(!decayTimer) decayTimer = setInterval(()=>{
+    if(stats.mood>0){ stats.mood=clamp(stats.mood-0.1); paintMeters(); notifyStats(); persist(); maybeRevealState(); }
+  }, 8000);
+  if(!quipTimer) quipTimer = setInterval(()=>{ if(!catching && !paydayActive) say(nextQuip(), 2600); }, 45000);
+  if(!tipsTimer) tipsTimer = setInterval(()=>{ if(!catching && !paydayActive) showBanner('💡 提醒：'+TIPS[Math.floor(Math.random()*TIPS.length)], 3000); }, 7200000);
+}
+
+/* ---------- 数值变化的小动作 ---------- */
+function addMood(d){ stats.mood=clamp(stats.mood+d); paintMeters(); notifyStats(); persist(); maybeRevealState(); }
+function addAff(d){ stats.affinity=clamp(stats.affinity+d); checkAffinityMilestone(); paintMeters(); notifyStats(); persist(); }
+function addWallet(d){ stats.wallet = stats.wallet + d; paintMeters(); notifyStats(); persist(); maybeRevealState(); }   // 加钱不夹 0：负钱包也能被工资/日结救活
+/* 扣钱：允许扣到负值；扣完钱包 < 0 → 月薪喵饿死（死亡态持久化，下次打开仍展示哭脸+横幅，点“重新投胎”才清零重开） */
+function spend(amount){
+  stats.wallet -= amount; paintMeters(); notifyStats(); persist(); maybeRevealState();
+  if(stats.wallet < 0){ die(); }
+  else { say('−¥'+amount+' 💸', 1400); }
+}
+function die(){
+  if(dead) return; dead=true;
+  clearInterval(walkBoostTimer); clearInterval(teaserBoostTimer); clearInterval(teaserAffTimer);
+  lockedItem=null; forcedState=null;
+  try{ setItemByFile('060.gif'); }catch(e){}   // 死亡态固定为趴桌流泪的哭脸（060.gif）
+  persist();                            // 持久化死亡标记：保留存档，下次打开仍显示死亡态（不清零）
+  showDeadBanner();                     // 横幅 + “重新投胎”按钮，静止等待用户操作
+}
+/* 死亡横幅：哭脸 + 提示 + “重新投胎”按钮，不自动隐藏 */
+function showDeadBanner(){
+  const b=$('#banner'); if(!b) return;
+  clearTimeout(showBanner._t);
+  b.style.background='#f3eff1'; b.style.borderColor='#d9c9cf'; b.style.color='#7a5a5a';
+  b.innerHTML='';
+  const msg=document.createElement('div'); msg.style.cssText='font-size:12px;line-height:1.65;';
+  msg.innerHTML='💀 <b>月薪喵因穷困离世…</b><br>成就 / 心情 / 好感 / 钱包 全部清零<br>点击下方重新开始：';
+  const btn=document.createElement('button'); btn.textContent='🐾 重新投胎';
+  btn.style.cssText='margin-top:10px;border:none;background:#ff8aa0;color:#fff;font-weight:700;padding:9px 20px;border-radius:12px;cursor:pointer;font-size:13px;box-shadow:0 4px 12px rgba(255,138,160,.4);';
+  btn.onclick=()=>reincarnate();
+  b.appendChild(msg); b.appendChild(btn); b.style.display='block';
+}
+/* 重新投胎：清空整个存档 → 一切回到初始，死亡态解除 */
+function reincarnate(){
+  try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+  stats.wallet=520; stats.mood=75; stats.affinity=10;
+  lastSettle=''; lastPayday=''; lastHoliday=''; lastExpenseDay='';
+  lowPower=false; healthEnabled=true; teaserAffDate=''; teaserAffGain=0;
+  dead=false;
+  const b=$('#banner'); if(b){ b.style.display='none'; b.innerHTML=''; }
+  lockedItem=null; forcedState=null; currentState=autoState();
+  paintMeters(); tick();
+  say('重生啦！这次要好好打工养猫💪', 2400);
+  if(window.__pet) window.__pet.notifyStats({wallet:stats.wallet, mood:stats.mood, affinity:stats.affinity, level:affinityLabel()});
+  if(window.__pet) window.__pet.notifyFlags({walking:false, teaser:false, lowPower:lowPower});
+  if(!lowPower) startCycle();
+  startLoops(); startHealthSchedule(); checkDailyExpense();
+}
+function affinityLabel(){ if(stats.affinity>=80) return '挚友喵'; if(stats.affinity>=50) return '伙伴喵'; if(stats.affinity>=25) return '熟人喵'; return '陌生喵'; }
+let _affStage=0;
+function checkAffinityMilestone(){
+  const st = stats.affinity>=80?3 : stats.affinity>=50?2 : stats.affinity>=25?1 : 0;
+  if(st>_affStage){ _affStage=st; showBanner('💗 好感度提升到「'+affinityLabel()+'」！解锁新成就贴图~'); }
+}
+
+/* ---------- 浏览器预览：底部状态栏（exe 中隐藏） ---------- */
+if(!window.__pet){
+  buildStateUI($('#stateBtns'), k=>setState(k));
+  const autoB=document.createElement('button'); autoB.className='btn ghost'; autoB.textContent='🤖自动';
+  autoB.onclick=()=>setAuto(); $('#stateBtns').appendChild(autoB);
+}
+
+/* =========================================================================
+   互动：戳 / 挠 / 抛 / 摸摸头 / 投喂 / 玩耍
+   ========================================================================= */
+let downTime=0, moved=false, lastDX=0;
+dragLayer.addEventListener('pointerdown', e=>{
+  if(e.target.closest('.coin, #laser')) return;   // 投喂金币 / 逗猫棒可点，不触发拖动
+  drag=true; dragLayer.classList.add('dragging');
+  const r=pet.getBoundingClientRect(); ox=e.clientX-r.left; oy=e.clientY-r.top;
+  if(!window.__pet){ pet.style.left=e.clientX-ox+'px'; pet.style.top=e.clientY-oy+'px'; pet.style.transform='none'; }
+  downTime=Date.now(); moved=false; lastDX=0;
+  dragLayer.setPointerCapture(e.pointerId);
+});
+dragLayer.addEventListener('pointermove', e=>{
+  if(!drag) return;
+  lastDX=e.movementX;
+  if(Math.abs(e.movementX)>2 || Math.abs(e.movementY)>2) moved=true;
+  if(window.__pet) window.__pet.dragBy(e.movementX, e.movementY);
+  else { pet.style.left=e.clientX-ox+'px'; pet.style.top=e.clientY-oy+'px'; }
+});
+let drag=false, ox=0, oy=0;
+dragLayer.addEventListener('pointerup', e=>{
+  if(!drag) return; drag=false; dragLayer.classList.remove('dragging');
+  const dt=Date.now()-downTime;
+  if(!moved){ if(dt<350) poke(); else scratch(); }
+  else if(Math.abs(lastDX)>6){ throwPet(lastDX); }   // 拖拽有速度 → 抛出去
+});
+dragLayer.addEventListener('dblclick', ()=> play());
+
+function heartBurst(n=5, Icon='❤'){
+  const r=pet.getBoundingClientRect();
+  for(let i=0;i<n;i++){
+    const h=document.createElement('div'); h.className='heart'; h.textContent= i%2? Icon:'💰';
+    h.style.left=(r.left+r.width/2-10+(Math.random()*60-30))+'px';
+    h.style.top=(r.top+10+(Math.random()*20))+'px';
+    h.style.fontSize=(16+Math.random()*10)+'px';
+    document.body.appendChild(h); setTimeout(()=>h.remove(),1000);
+  }
+}
+function bounce(){ pet.classList.remove('bounce'); void pet.offsetWidth; pet.classList.add('bounce'); }
+
+/* 戳一下：震惊 + 气泡 */
+function poke(){ if(dead) return; transientState('shock', 900); say('！'); }
+/* 长按：挠下巴 → 眯眼飘心 + 好感（提高好感更易） */
+function scratch(){ if(dead) return; bounce(); heartBurst(5,'💗'); say('呼噜~'); addMood(5); addAff(4); }
+/* 摸摸头（右键菜单/面板） */
+function pat(){ if(dead) return; bounce(); heartBurst(4,'❤'); say(currentItem?currentItem.name:'喵~'); addMood(4); addAff(4); }
+/* 投喂：心情+，好感+（提高好感更易） */
+function feed(){ if(dead) return; addMood(12); addAff(6); transientState('eat', 1800); say('好吃！'); heartBurst(3,'🍖'); }
+/* 玩耍：开心蹦跳，心情+，好感+，但要花钱（锁定 038-蹦跳 专用动图） */
+let playTimer=null;
+function play(){ if(dead) return; bounce(); addMood(15); addAff(10); setItemByFile('038.gif','玩球球！🪙'); heartBurst(5,'⚽'); spend(PLAY_COST); clearTimeout(playTimer); playTimer=setTimeout(()=>{ if(lockedItem && lockedItem.file==='038.gif'){ lockedItem=null; tick(); } }, 1500); }
+/* 抛：带惯性飞出再回弹（移动整个窗口） */
+function throwPet(vx){
+  if(dead) return;
+  let s=vx; for(let i=0;i<6;i++){ setTimeout(()=>{ if(window.__pet) window.__pet.dragBy(s,0); s*=0.6; }, i*40); }
+  pet.style.setProperty('--tx', (vx>0?24:-24)+'px'); pet.style.setProperty('--ty','-26px'); pet.style.setProperty('--rot',(vx>0?16:-16)+'deg');
+  pet.classList.remove('throw'); void pet.offsetWidth; pet.classList.add('throw');
+}
+
+/* =========================================================================
+   下班倒计时
+   ========================================================================= */
+const OFF_HOUR = 18;
+function offWorkInfo(){
+  const now=new Date(), d=now.getDay();
+  if(d===0||d===6) return {rest:true};
+  const t=new Date(now); t.setHours(OFF_HOUR,0,0,0);
+  let diff=t-now; if(diff<0) diff=0;
+  const h=Math.floor(diff/3600000), m=Math.floor((diff%3600000)/60000);
+  return {h,m};
+}
+function paintOffwork(){
+  const el=$('#offwork'); const info=offWorkInfo();
+  if(info.rest){ el.textContent='🌿 周末不加班·摸鱼愉快'; }
+  else if(info.h===0 && info.m===0){ el.textContent='🎉 下班啦！'; if(!offworkCelebrated){ offworkCelebrated=true; celebrateOffwork(); } }
+  else { el.textContent='⏰ 距离下班 '+info.h+'h'+String(info.m).padStart(2,'0')+'m'; }
+}
+let offworkCelebrated=false;
+function celebrateOffwork(){ setState('happy'); say('终于下班！！'); showBanner('🎉 下班快乐！今天辛苦啦，去干饭吧~'); }
+paintOffwork(); setInterval(paintOffwork, 30000);
+
+/* =========================================================================
+   工资日彩蛋（默认每月 15 号；可用面板「模拟发工资」触发）
+   ========================================================================= */
+function applyPaydayIfToday(){
+  if(dead) return;
+  const now=new Date();
+  if(now.getDate()===PAYDAY){
+    paydayActive=true;
+    const ms=monthStr();
+    if(lastPayday!==ms){ lastPayday=ms; addWallet(3000); showBanner('💰 发工资啦！+¥3000，这个月又要还花呗了…'); }
+  }
+}
+function simulatePayday(){           // 面板按钮：演示彩蛋
+  paydayActive=true;
+  if(!simulatePaid){ simulatePaid=true; addWallet(3000); }
+  coinRain(14); showBanner('💸 模拟发工资！猫暴富中…（rich 状态常驻）');
+}
+let simulatePaid=false;
+applyPaydayIfToday();
+
+/* 满屏掉钱（工资日/模拟）：期间整窗可点击，方便点中 ¥ */
+function coinRain(n=12){
+  if(window.__pet) window.__pet.forceClickable(true);
+  const box=$('#coins');
+  for(let i=0;i<n;i++){
+    setTimeout(()=>{
+      const c=document.createElement('div'); c.className='coin'; c.textContent='💰';
+      c.style.left=(Math.random()*92)+'vw';
+      c.style.animationDuration=(2.2+Math.random()*1.4)+'s';
+      c.onclick=()=>{ addWallet(20); c.remove(); };
+      box.appendChild(c); setTimeout(()=>c.remove(),4200);
+    }, i*180);
+  }
+  setTimeout(()=>{ if(window.__pet) window.__pet.forceClickable(false); }, n*180 + 4400);
+}
+
+/* =========================================================================
+   随机吐槽气泡（不循环重复：shuffle 队列，用完再洗）
+   ========================================================================= */
+const QUIPS = [
+  "又又又加班了…","老板画的饼，吃不下","奶茶续命ing","工资到账前：我是谁",
+  "摸鱼使我快乐","今天也要元气满满(假的)","想下班想下班想下班","这班是一点也上不动",
+  "午饭吃什么好难","摸鱼被抓就说是bug","工资嘛，够活就行","带薪上厕所是刚需",
+  "周五的班最好上","周一的我：已报废","咖啡续命中","今天心情由工资决定",
+  "摸鱼一时爽，一直摸鱼一直爽","下班倒计时是我唯一的动力","老板说我很有潜力(又画饼)","想给工资条点个踩",
+  "现在的我：咸鱼一条","打工人的浪漫是发工资","摸鱼是门艺术","今天的KPI：活着",
+];
+let quipQueue=[];
+function nextQuip(){ if(!quipQueue.length) quipQueue=QUIPS.slice().sort(()=>Math.random()-0.5); return quipQueue.pop(); }
+
+/* =========================================================================
+   健康提醒（固定规则，可一键开关）：
+     · 每 30 分钟 → 喝水提醒 💧
+     · 每 45 分钟 → 久坐站起来活动 🧍
+     · 每 60 分钟 → 休息 / 护眼提醒 🌿
+     · 夜间(21:00–次日07:00)开机 → 立即提示休息，并每 20 分钟更频繁温和提醒 🌙
+   低调省电模式(lowPower)下不弹喝水/久坐/休息（避免打扰），但夜间提示始终触发。
+   ========================================================================= */
+const TIPS = ["喝口水~ 💧","伸个懒腰~ 🤸","起来走两步 👟","看看远处护眼 👀","摸鱼五分钟回回血 😌"];
+const REMIND_TIPS = ["喝口水~ 💧","伸个懒腰~ 🤸","起来走两步 👟","看看远处护眼 👀","摸鱼五分钟回回血 😌"];
+const HEALTH = { waterMin:30, standMin:45, restMin:60, nightStart:21, nightEnd:7, nightMin:20 };
+function isNight(){
+  const h = new Date().getHours();
+  return (h >= HEALTH.nightStart || h < HEALTH.nightEnd);
+}
+function startHealthSchedule(){
+  clearInterval(healthTickTimer); healthTickTimer=null;
+  hc = { water:0, stand:0, rest:0, night:0 };
+  if(!healthEnabled) return;
+  // 夜间开机即提示：21:00–次日07:00 之间开电脑，立即提醒注意休息
+  if(isNight()){
+    say('🌙 都这么晚还在用电脑？注意休息，别熬太晚，早点睡哦~', 5000);
+  }
+  // 统一每分钟 tick：白天分三档（喝水/久坐/休息），夜间单独更频繁节奏（每 20 分）
+  healthTickTimer = setInterval(()=>{
+    if(catching || paydayActive) return;
+    const night = isNight();
+    if(night){
+      // 夜间更频繁：每 20 分钟温和护眼/休息提醒（始终触发，不受低调模式影响）
+      if(++hc.night >= HEALTH.nightMin){ hc.night = 0;
+        const pool = [
+          '🌙 夜深了，起来活动下、喝口水，注意护眼别熬太晚~',
+          '🌙 该休息就休息，站起来走走、伸个懒腰，别硬扛~',
+        ];
+        say(pool[Math.floor(Math.random()*pool.length)], 3200);
+      }
+      return;   // 夜间只走夜间节奏，不叠加白天三提醒
+    }
+    // 白天：喝水 30min
+    if(++hc.water >= HEALTH.waterMin){ hc.water=0; if(!lowPower) say('💧 该喝水啦，喝口水歇一歇~', 2400); }
+    // 久坐 45min：站起来活动
+    if(++hc.stand >= HEALTH.standMin){ hc.stand=0; if(!lowPower) say('🧍 久坐啦，站起来伸个懒腰、走两步活动下~', 2600); }
+    // 休息护眼 60min
+    if(++hc.rest  >= HEALTH.restMin){  hc.rest =0; if(!lowPower) say('🌿 工作1小时啦，起来活动活动、看看远处护护眼~', 2600); }
+  }, 60000);
+}
+function applyReminder(min){ healthEnabled = min>0; persist(); startHealthSchedule(); }
+
+/* =========================================================================
+   每日生活开支（自动结算：跨天扣固定金额，扣到负则饿死）
+   ========================================================================= */
+function checkDailyExpense(){
+  const today = dateStr();
+  if(lastExpenseDay === today) return;          // 今天已扣
+  if(lastExpenseDay === ''){ lastExpenseDay = today; persist(); return; }  // 首启：只记录日期，不立即扣
+  lastExpenseDay = today; persist();
+  spend(DAILY_EXPENSE);                          // 跨天：扣生活开支（内部可能触发死亡）
+}
+
+/* =========================================================================
+   接工资（日结一次：每天固定发 50，不玩小游戏，直接到账）
+   ========================================================================= */
+const DAILY_PAYOUT = 50;   // 接工资「日结」：每天固定发 50 块
+let catching=false;        // 保留变量，供下方吐槽/提醒定时器做状态判断
+function startCatch(){
+  if(dead) return;
+  const today=dateStr();
+  if(lastSettle===today){ say('今天已结算💤 明天再来'); return; }
+  lastSettle=today; persist();
+  addWallet(DAILY_PAYOUT);
+  say('日结 +¥'+DAILY_PAYOUT+' 💤'); showBanner('📅 今日接工资到账：+¥'+DAILY_PAYOUT+'（明天可再接）', 3200);
+  paintMeters(); notifyStats();
+}
+
+/* =========================================================================
+   自动散步 / 逗猫棒跟随
+   ========================================================================= */
+let walking=false, teaser=false;
+/* 移动模式专用 GIF 池：用户指定 7 张都要用到，每次开启随机挑一张 */
+const WALK_FILES  = ['025.gif','032.gif','034.gif','106.gif']; // 散步：路过/开车/骑车
+const TEASER_FILES= ['029.gif','111.gif','116.gif'];                       // 逗猫棒：得意/飘/闪光
+function pickRandom(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+let teaserBoostTimer=null;   // 逗猫棒期间持续提升心情（轻量反馈）
+let teaserAffTimer=null;     // 逗猫棒亲密度：每累计 30s 上涨 1 点，当天封顶 5 点
+let walkBoostTimer=null;     // 散步期间持续提升心情（轻量反馈）
+/* 散步 / 逗猫棒 统一由主进程驱动（两者互斥：开一个主进程会先停另一个） */
+function setMoving({walking:w, teaser:t}){
+  if(dead) return;
+  walking=w; teaser=t;
+  clearInterval(teaserBoostTimer); teaserBoostTimer=null;
+  clearInterval(teaserAffTimer);  teaserAffTimer=null;
+  clearInterval(walkBoostTimer);  walkBoostTimer=null;
+  if(w||t){
+    const file = w ? pickRandom(WALK_FILES) : pickRandom(TEASER_FILES);
+    setItemByFile(file, t ? '追光点！' : '溜达溜达~ 心情up~');
+    if(w){   // 散步：运动起来心情缓慢回升（每秒约 +0.2）
+      walkBoostTimer = setInterval(()=>{ addMood(0.2); if(Math.random()<0.10) heartBurst(1,'💛'); }, 1000);
+    }
+    if(t){   // 逗猫棒：心情轻量上涨给反馈；亲密度按「30s +1、当日封顶 5」缓慢累积
+      teaserBoostTimer = setInterval(()=>{ addMood(0.5); if(Math.random()<0.18) heartBurst(1,'💗'); }, 500);
+      teaserAffTimer = setInterval(()=>{
+        const today = dateStr();
+        if(teaserAffDate !== today){ teaserAffDate = today; teaserAffGain = 0; }  // 跨天重置
+        if(teaserAffGain < 5){ teaserAffGain++; addAff(1); persist(); say('亲密度 +1（今日 '+teaserAffGain+'/5）', 1400); }
+        else { showBanner('今日逗猫棒亲密度已封顶（5/5），明天再来~', 2200); }
+      }, 30000);
+    }
+  }
+  else { clearInterval(walkBoostTimer); walkBoostTimer=null; lockedItem=null; say('停~'); tick(); }
+  if(window.__pet) window.__pet.notifyFlags({walking:w, teaser:t, lowPower:lowPower});
+}
+
+/* =========================================================================
+   捂鼻子扇闻：扇风动图 + 气泡（纯视觉互动，已去除音效）
+   ========================================================================= */
+let sniffTimer=null;
+function sniff(){
+  if(dead) return;
+  const it = GIF_CATALOG.find(x=>x.file==='020.gif');   // 扇风好热
+  if(it){ lockedItem=it; render(it, '噗…什么味道'); }
+  clearTimeout(sniffTimer);
+  sniffTimer=setTimeout(()=>{ if(lockedItem && lockedItem.file==='020.gif'){ lockedItem=null; tick(); } }, 1600);
+}
+
+/* =========================================================================
+   昼夜色调 + 节日撒花（环境联动）
+   ========================================================================= */
+const TIME_PHASES = {
+  morning:'brightness(1.03) saturate(1.06)',                       // 清晨：微亮
+  noon:   'none',                                                  // 白天：原色
+  evening:'sepia(.16) saturate(1.12) brightness(.98)',             // 傍晚：暖橙
+  night:  'brightness(.9) hue-rotate(-10deg) saturate(1.1)',       // 夜晚：冷蓝
+};
+function phaseOf(h){ if(h>=5&&h<11) return 'morning'; if(h>=11&&h<17) return 'noon'; if(h>=17&&h<20) return 'evening'; return 'night'; }
+function applyAmbiance(){
+  const ph = phaseOf(new Date().getHours());
+  pet.style.filter = TIME_PHASES[ph];
+  // 节日彩蛋（固定阳历节日；春节为农历，未自动识别）
+  const md = String(new Date().getMonth()+1).padStart(2,'0')+'-'+String(new Date().getDate()).padStart(2,'0');
+  const HL = {'01-01':'元旦快乐','02-14':'情人节快乐','05-01':'劳动节快乐','10-01':'国庆节快乐','12-25':'圣诞快乐'};
+  if(HL[md] && lastHoliday!==md){
+    lastHoliday = md; persist();
+    showBanner('🎉 '+HL[md]+'！猫猫给你撒花花~', 4200);
+    holidayConfetti();
+  }
+}
+function holidayConfetti(){
+  const box=$('#confetti'); const colors=['#ff8aa0','#7ec8e3','#ffd166','#7B9F76','#ffb347'];
+  for(let i=0;i<36;i++){ const c=document.createElement('div'); c.className='confetti';
+    c.style.left=(Math.random()*100)+'vw'; c.style.background=colors[i%colors.length];
+    c.style.animation='confall '+(2+Math.random()*1.6)+'s linear forwards';
+    c.style.animationDelay=(Math.random()*0.8)+'s';
+    box.appendChild(c); setTimeout(()=>c.remove(),4200); }
+}
+
+/* =========================================================================
+   低调省电模式：暂停换图轮播 / 后台循环，降低内存占用
+   ========================================================================= */
+function applyLowPower(on){
+  lowPower = on; persist();
+  if(on){
+    clearInterval(cycleTimer); cycleTimer=null;     // 暂停换图
+    if(decayTimer){ clearInterval(decayTimer); decayTimer=null; }
+    if(quipTimer){ clearInterval(quipTimer); quipTimer=null; }
+    if(tipsTimer){ clearInterval(tipsTimer); tipsTimer=null; }
+    showBanner('🌙 低调模式：已省电（暂停换图与提醒）', 2600);
+  } else {
+    startCycle();      // 恢复换图
+    startLoops();      // 恢复后台循环
+    showBanner('✨ 已恢复正常模式', 2200);
+  }
+  if(window.__pet) window.__pet.notifyFlags({walking:walking, teaser:teaser, lowPower:lowPower});
+}
+
+/* =========================================================================
+   开场白
+   ========================================================================= */
+if(!dead) setTimeout(()=>say('今天也要加油💪', 2200), 800);
+
+/* =========================================================================
+   Electron 专属钩子
+   ========================================================================= */
+if(window.__pet){
+  window.__pet.onSetState(k=>setState(k));
+  window.__pet.onSetAuto(()=>setAuto());
+  window.__pet.onPat(()=>pat());
+  window.__pet.onFeed(()=>feed());
+  window.__pet.onPlay(()=>play());
+  window.__pet.onPoke(()=>poke());
+  window.__pet.onStartCatch(()=>startCatch());
+  window.__pet.onSetMoving(setMoving);
+  window.__pet.onSimulatePayday(()=>simulatePayday());
+  window.__pet.onSniff(()=>sniff());
+  window.__pet.onSetReminder(min=>applyReminder(min));
+  window.__pet.onToggleLowPower(()=>applyLowPower(!lowPower));
+  let dimmed=false;
+  window.__pet.onDim(v=>{ pet.style.opacity=v; dimmed=(v<1); });
+  document.addEventListener('mousemove', ()=>{ if(dimmed) window.__pet.hover(); });
+  notifyStats();
+  window.__pet.notifyFlags({walking:false, teaser:false, lowPower:lowPower});
+}
+
+/* 启动 */
+if(dead){
+  /* 死亡态：展示哭脸 + 横幅，等待用户点「重新投胎」清零重开（下次打开仍会显示，直到投胎） */
+  try{ setItemByFile('060.gif'); }catch(e){}
+  paintMeters();
+  showDeadBanner();
+  _log('INIT dead state shown');
+} else {
+  try {
+    const firstItem = (typeof stateLists!=='undefined' && stateLists[currentState] && stateLists[currentState].length) ? pickNext(currentState)
+                     : (typeof GIF_CATALOG!=='undefined' && GIF_CATALOG.length ? GIF_CATALOG[0] : null);
+    if(firstItem) render(firstItem, "月薪喵来啦～");
+    else { showDebug('❌ 没有可用 GIF（catalog/stateLists 为空），猫窗口空白。'); }
+  } catch(err){ showDebug('启动渲染异常: '+(err&&err.stack||err)); }
+  _log('INIT item='+(currentItem?currentItem.file:'NULL')+' state='+currentState+' src='+(currentItem?pathOf(currentItem.file):''));
+  if(!lowPower) startCycle();
+  startLoops();
+  paintOffwork();
+  applyAmbiance();
+  setInterval(applyAmbiance, 60000);   // 每分钟检查昼夜/节日
+  startHealthSchedule();              // 启动健康提醒（喝水30min/休息1h/夜间护眼，默认开启）
+  checkDailyExpense();                // 每日生活开支结算（首启只记录日期，不立即扣）
+  setInterval(checkDailyExpense, 60000);   // 每分钟检查跨天，自动扣生活开支
+}
+</script>
+</body>
+</html>
