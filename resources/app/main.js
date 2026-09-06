@@ -42,6 +42,7 @@ let isPetHidden = false;
 let isPanelHidden = false;
 let autoStepAside = true;     // 自动让位：点别的软件时猫半透明 + 点击穿透（默认开）
 let autoStart = false;        // 开机自启动
+let atLoginStart = false;     // 本次是否由「开机自启动」拉起（是则猫固定落在右下角，不沿用上次位置）
 let quitting = false;
 let currentState = 'idle';
 
@@ -83,7 +84,7 @@ function broadcastMoving(w,t){ try { petWin && petWin.webContents.send('pet-set-
 
 function setAutoStart(on){
   autoStart = on;
-  try { app.setLoginItemSettings({ openAtLogin: on, path: app.getPath('exe') }); } catch(e){}
+  try { app.setLoginItemSettings({ openAtLogin: on, path: app.getPath('exe'), args: ['--at-login'] }); } catch(e){}
 }
 
 function showPet(show){
@@ -115,7 +116,7 @@ function createWindows(){
     return p[0]>=wa.x && p[0]<=wa.x+wa.width && p[1]>=wa.y && p[1]<=wa.y+wa.height; };
 
   /* ---------- 猫窗口（仅猫，可拖拽） ---------- */
-  const validPos = lastPetPos && inPrimary(lastPetPos);
+  const validPos = !atLoginStart && lastPetPos && inPrimary(lastPetPos);   // 开机自启时固定落主屏右下角，不沿用上次位置
   const px = validPos ? lastPetPos[0] : wa.x + wa.width  - PET_W - MARGIN;
   const py = validPos ? lastPetPos[1] : wa.y + wa.height - PET_H - MARGIN;
   petWin = new BrowserWindow({
@@ -439,7 +440,12 @@ if(!_gotLock){ L('LOCK_FAIL_QUIT'); app.quit(); return; }   // 同一瞬间多�
 app.whenReady().then(() => {
   L('APP_READY');
   try { killOtherPetInstances(); } catch(_){}   // 再杀一次兜底，防竞态下旧进程没清干净
-  try { autoStart = app.getLoginItemSettings().openAtLogin; } catch(e){}
+  try {
+    const li = app.getLoginItemSettings();
+    autoStart = li.openAtLogin;
+    // 自启标记：Electron 的 wasOpenedAtLogin + 登录项自带的 --at-login 参数，两者任一命中即视为开机自启
+    atLoginStart = !!li.wasOpenedAtLogin || process.argv.includes('--at-login');
+  } catch(e){ atLoginStart = process.argv.includes('--at-login'); }
   try { loadPos(); } catch(_){}             // 恢复上次猫 / 面板的位置
   try {
     createWindows();
